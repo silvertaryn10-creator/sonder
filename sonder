@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sonder</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;1,300;1,400&family=Space+Mono&display=swap');
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body.no-cursor *, body.no-cursor *::before, body.no-cursor *::after { cursor: none !important; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #080808;
+  }
+
+  #cursor { display: none; }
+
+  #stack {
+    position: fixed;
+    inset: 0;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    overflow: hidden;
+  }
+
+  .slide .bg {
+    position: absolute;
+    inset: -40px;
+    width: calc(100% + 80px);
+    height: calc(100% + 80px);
+    object-fit: cover;
+    object-position: center;
+    display: block;
+    filter: blur(28px) brightness(0.45) saturate(1.4);
+    z-index: 0;
+  }
+
+  .slide .fg {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain;
+    object-position: center center;
+    display: block;
+    z-index: 1;
+  }
+
+  /* subtle glass sheen */
+  .slide::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(
+      135deg,
+      rgba(255,255,255,.04) 0%,
+      rgba(160,210,190,.06) 50%,
+      rgba(255,255,255,.02) 100%
+    );
+    pointer-events: none; z-index: 2;
+  }
+
+  /* condensation lines */
+  .slide::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      transparent 0, transparent 5px,
+      rgba(255,255,255,.011) 5px, rgba(255,255,255,.011) 6px
+    );
+    pointer-events: none; z-index: 3;
+  }
+
+  #vignette {
+    position: fixed; inset: 0; pointer-events: none; z-index: 40;
+    background: radial-gradient(circle 22vmin at 50% 50%, transparent 60%, rgba(0,0,0,.78) 100%);
+    transition: background .08s;
+  }
+
+  /* TITLE */
+  #title {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: #080808;
+    transition: opacity 1.8s, visibility 1.8s;
+  }
+  #title.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+  #title h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(64px,9vw,112px);
+    font-weight: 300; font-style: italic;
+    color: rgba(255,255,255,.88);
+    letter-spacing: .04em;
+  }
+  #title .sub {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(12px,1.4vw,15px);
+    font-weight: 300;
+    color: rgba(255,255,255,.26);
+    letter-spacing: .24em;
+    margin-top: 18px;
+  }
+  #title .def {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: clamp(11px,1.05vw,13px);
+    color: rgba(255,255,255,.16);
+    letter-spacing: .07em;
+    margin-top: 42px;
+    max-width: 360px;
+    text-align: center;
+    line-height: 2;
+  }
+  #enter {
+    margin-top: 54px;
+    font-family: 'Space Mono', monospace;
+    font-size: 8px; letter-spacing: .24em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.32);
+    background: none;
+    border: 1px solid rgba(255,255,255,.13);
+    padding: 13px 30px;
+    pointer-events: all;
+    transition: color .3s, border-color .3s;
+  }
+  #enter:hover { color: rgba(255,255,255,.72); border-color: rgba(255,255,255,.38); }
+
+  #ui {
+    position: fixed; bottom: 42px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 14px;
+    pointer-events: none;
+  }
+  .slide-caption {
+    position: absolute;
+    z-index: 4;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic; font-weight: 300;
+    font-size: clamp(10px, 0.95vw, 13px);
+    color: rgba(255,255,255,.9);
+    letter-spacing: .08em;
+    line-height: 1.75;
+    pointer-events: none;
+    transform: translateY(-50%);
+    text-align: center;
+    box-sizing: border-box;
+  }
+  #pips { display: flex; gap: 8px; align-items: center; }
+  .pip {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: rgba(255,255,255,.16);
+    transition: all .4s;
+  }
+  .pip.on { background: rgba(255,255,255,.82); transform: scale(1.5); }
+  .pip.done { background: rgba(255,255,255,.07); }
+  #hint {
+    font-family: 'Space Mono', monospace;
+    font-size: 8px; letter-spacing: .18em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.18);
+    transition: opacity 1s;
+  }
+
+  #scroller {
+    position: fixed;
+    inset: 0;
+    overflow-y: scroll;
+    z-index: 60;
+    scrollbar-width: none;
+    cursor: none;
+  }
+  #scroller::-webkit-scrollbar { display: none; }
+  #scroller-inner { width: 100%; }
+
+  #end {
+    position: fixed; inset: 0; z-index: 150;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 2s;
+  }
+  #end.on { opacity: 1; pointer-events: all; background: rgba(8,8,8,.6); }
+  #end p {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: clamp(18px,2.3vw,25px);
+    color: rgba(255,255,255,.62);
+    letter-spacing: .04em;
+    line-height: 1.95; text-align: center;
+    max-width: 440px;
+  }
+  #again {
+    margin-top: 38px;
+    font-family: 'Space Mono', monospace;
+    font-size: 8px; letter-spacing: .2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.26);
+    background: none; border: none;
+    transition: color .3s;
+  }
+  #again:hover { color: rgba(255,255,255,.62); }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+
+<div id="title">
+  <h1>sonder</h1>
+  <div class="sub">a walk through glass</div>
+  <div class="def">the realization that each passerby has a life<br>as vivid and complex as your own</div>
+  <button id="enter">enter</button>
+</div>
+
+<div id="stack"></div>
+<div id="vignette"></div>
+
+<div id="scroller">
+  <div id="scroller-inner"></div>
+</div>
+
+<div id="ui">
+  <div id="pips"></div>
+  <div id="hint">scroll to pass through</div>
+</div>
+
+<div id="end">
+  <p>you have passed through twenty-six lives,<br>each one entire</p>
+  <button id="again">begin again</button>
+</div>
+
+<script>
+const LAYERS = [
+  { src: "sonder_01_grass-sitting.jpg",    caption: "the tree has heard stories no one else will" },
+  { src: "sonder_02_grass-sitting.jpg",    caption: "everyone here chose the same patch of sun, for completely different reasons" },
+  { src: "sonder_03_park-rest.jpg",        caption: "no words were spoken, they still shared something beautiful" },
+  { src: "sonder_03_park-shelter.jpg",     caption: "he came here to think, he has been thinking for two hours" },
+  { src: "sonder_04_grass-watching.jpg",   caption: "she is reading a text that will make her day" },
+  { src: "sonder_04_park-cycle.jpg",       caption: "they ride the same path every day, it's never quite the same" },
+  { src: "sonder_04_park-wander.jpg",      caption: "she wore color because the world needed reminding" },
+  { src: "sonder_04_street-threshold.jpg", caption: "he notices everyone who comes and goes, who notices him?" },
+  { src: "sonder_05_street-framed.jpg",    caption: "he fixes something small, he thinks about something much larger" },
+  { src: "sonder_05_transit-ascent.jpg",   caption: "you heard her laugh but never saw her face" },
+  { src: "sonder_06_glass-cowboy.jpg",     caption: "his silhouette holds memories" },
+  { src: "sonder_07_glass-workspace.jpg",  caption: "a different coat draped on her chair each day, what will tomorrow be?" },
+  { src: "sonder_08_glass-restaurant.jpg", caption: "a check for one" },
+  { src: "sonder_09_glass-cafe.jpg",       caption: "two people laughing, you will never know what at" },
+  { src: "sonder_09_glass-neon.jpg",       caption: "they come here every thursday, you will never eat here" },
+  { src: "sonder_10_glass-neon.jpg",       caption: "he has been here long enough to know the bartender's name. the bartender does not know his" },
+  { src: "sonder_11_glass-cafe.jpg",       caption: "some stories happen in places where you least expect them" },
+  { src: "sonder_12_glass-bus.jpg",        caption: "the man in the window has been on seven buses today, this is not one of them" },
+  { src: "sonder_12_station-pianist.jpg",  caption: "he plays the same song every day, each time it means something different" },
+  { src: "sonder_16_street-golden.jpg",    caption: "her world is full of wonder, she'll never forget it" },
+  { src: "sonder_16_street-passing.jpg",   caption: "this is not their first time meeting, they don't know that" },
+  { src: "sonder_19_street-bench.jpg",     captions: [
+      { text: "they can't wait to grow up and do anything they want",        side: 'left',  top: '72%' },
+      { text: "they're learning how to slow down long enough to feel young again", side: 'right', top: '68%' }
+    ] },
+  { src: "sonder_23_street-bench.jpg",     caption: "they are both telling someone about their day" },
+  { src: "sonder_23_street-waiting.jpg",   caption: "they all came here for the same reason, each privately somewhere else entirely" },
+  { src: "sonder_24_street-waiting.jpg",   captions: [
+      { text: "she missed her bus",              side: 'left',  top: '72%' },
+      { text: "he doesn't know where he's headed", side: 'right', top: '68%' }
+    ] },
+  { src: "sonder_25_street-waiting.jpg",   caption: "six people, six different reasons to be somewhere else" }
+];
+
+const N = LAYERS.length;
+const PX_PER_SLIDE = 600;
+const TOTAL = PX_PER_SLIDE * N + 200;
+
+const stack = document.getElementById('stack');
+const pipsEl = document.getElementById('pips');
+const hintEl = document.getElementById('hint');
+const cursor = document.getElementById('cursor');
+const vignette = document.getElementById('vignette');
+const scroller = document.getElementById('scroller');
+const scrollerInner = document.getElementById('scroller-inner');
+const endEl = document.getElementById('end');
+
+scrollerInner.style.height = TOTAL + 'px';
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+// Position a caption so it fills the dark margin strip, centered within it.
+// The container spans the full margin width; padding keeps text away from both edges.
+function positionCaption(cap, img, idx) {
+  const vw = innerWidth, vh = innerHeight;
+  const ir = img.naturalWidth / img.naturalHeight;
+  const vr = vw / vh;
+
+  if (ir < vr) {
+    // Portrait image → dark margins on left & right; alternate per slide
+    const margin = Math.floor((vw - vh * ir) / 2);
+    const pad    = Math.max(8, Math.floor(margin * 0.18));
+    const side   = idx % 2 === 0 ? 'left' : 'right';
+    cap.style[side]   = '0px';
+    cap.style.width   = margin + 'px';
+    cap.style.padding = `0 ${pad}px`;
+    cap.style.top     = rand(12, 80).toFixed(1) + '%';
+  } else {
+    // Landscape image → dark margins on top & bottom; alternate top/bottom
+    const margin = Math.floor((vh - vw / ir) / 2);
+    const pad    = Math.max(6, Math.floor(margin * 0.18));
+    const useTop = idx % 2 === 0;
+    cap.style.top     = (useTop ? Math.floor(margin / 2) : Math.floor(vh - margin / 2)) + 'px';
+    cap.style.left    = rand(20, 65).toFixed(1) + '%';
+    cap.style.width   = '160px';
+    cap.style.padding = `${pad}px 0`;
+  }
+}
+
+// build slides — each has a blurred bg, a sharp fg, and a hidden caption in the margins
+const slides = LAYERS.map((l, i) => {
+  const div = document.createElement('div');
+  div.className = 'slide';
+
+  const bg = document.createElement('img');
+  bg.className = 'bg';
+  bg.src = l.src;
+  bg.alt = '';
+  div.appendChild(bg);
+
+  const fg = document.createElement('img');
+  fg.className = 'fg';
+  fg.src = l.src;
+  fg.alt = '';
+  div.appendChild(fg);
+
+  // captions hidden in the dark — revealed only by the spotlight
+  const captionList = l.captions ? l.captions
+                    : l.caption  ? [{ text: l.caption, side: null, top: null }]
+                    : [];
+
+  captionList.forEach(cDef => {
+    const cap = document.createElement('div');
+    cap.className = 'slide-caption';
+    cap.textContent = cDef.text;
+
+    const place = () => {
+      if (cDef.side) {
+        // explicit side + vertical position
+        const vw = innerWidth, vh = innerHeight;
+        const ir = fg.naturalWidth / fg.naturalHeight;
+        const margin = ir < (vw / vh) ? Math.floor((vw - vh * ir) / 2) : 80;
+        const pad = Math.max(8, Math.floor(margin * 0.18));
+        cap.style[cDef.side] = '0px';
+        cap.style.width   = margin + 'px';
+        cap.style.padding = `0 ${pad}px`;
+        cap.style.top     = cDef.top;
+      } else {
+        positionCaption(cap, fg, i);
+      }
+    };
+    if (fg.complete && fg.naturalWidth) place();
+    else fg.addEventListener('load', place, { once: true });
+    div.appendChild(cap);
+  });
+
+  stack.appendChild(div);
+  return div;
+});
+
+// build pips
+LAYERS.forEach((_, i) => {
+  const p = document.createElement('div');
+  p.className = 'pip';
+  pipsEl.appendChild(p);
+});
+
+let lastCaption = -1;
+let ended = false;
+
+function update() {
+  const scrollY = scroller.scrollTop;
+  const pos = scrollY / PX_PER_SLIDE;
+  const current = Math.floor(pos);
+  const t = pos - current;
+
+  slides.forEach((slide, i) => {
+    let op = 0;
+    if (i < current)       op = 0;
+    else if (i === current) op = 1 - t;
+    else if (i === current + 1) op = t;
+    slide.style.opacity = op;
+  });
+
+  // update pips
+  const dominant = t > 0.5 ? current + 1 : current;
+  const clamped = Math.min(dominant, N - 1);
+  if (clamped !== lastCaption) {
+    lastCaption = clamped;
+    document.querySelectorAll('.pip').forEach((p, i) => {
+      p.className = 'pip' + (i === clamped ? ' on' : i < clamped ? ' done' : '');
+    });
+  }
+
+  if (scrollY >= TOTAL - 220 && !ended) {
+    ended = true;
+    endEl.classList.add('on');
+    hintEl.style.opacity = '0';
+  }
+}
+
+scroller.addEventListener('scroll', update, { passive: true });
+
+// vignette state
+let lastMx = 50, lastMy = 50;
+let isBlackout = false, blackoutTimer = null;
+
+function setVignette(mx, my, alpha, duration) {
+  vignette.style.transition = `background ${duration}`;
+  vignette.style.background = `radial-gradient(circle 22vmin at ${mx}% ${my}%, transparent 60%, rgba(0,0,0,${alpha}) 100%)`;
+}
+
+// click → fade to black, then back
+document.addEventListener('mouseup', e => {
+  if (!isBlackout) return;
+  clearTimeout(blackoutTimer);
+  setVignette(lastMx, lastMy, 0.78, '1.2s');
+  setTimeout(() => { isBlackout = false; }, 1200);
+});
+
+document.addEventListener('mousedown', e => {
+  if (e.target.closest('button')) return;
+  clearTimeout(blackoutTimer);
+  isBlackout = true;
+  setVignette(lastMx, lastMy, 1, '0.25s');
+});
+
+// mouse parallax & vignette
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+
+  const mx = (e.clientX / innerWidth * 100).toFixed(1);
+  const my = (e.clientY / innerHeight * 100).toFixed(1);
+  lastMx = mx; lastMy = my;
+
+  // any movement immediately cancels the fade-to-black, returns to normal vignette
+  if (isBlackout) {
+    clearTimeout(blackoutTimer);
+    isBlackout = false;
+    setVignette(mx, my, 0.78, '0s');
+  } else {
+    setVignette(mx, my, 0.78, '.08s');
+  }
+
+  const scrollY = scroller.scrollTop;
+  const pos = scrollY / PX_PER_SLIDE;
+  const current = Math.floor(pos);
+  const dx = (e.clientX / innerWidth - .5) * 16;
+  const dy = (e.clientY / innerHeight - .5) * 10;
+  slides.forEach((slide, i) => {
+    if (i === current || i === current + 1) {
+      const factor = i === current ? 1 : 0.6;
+      slide.querySelector('.fg').style.transform = `translate(${dx * factor}px, ${dy * factor}px)`;
+    } else {
+      const fg = slide.querySelector('.fg');
+      if (fg) fg.style.transform = '';
+    }
+  });
+});
+
+document.addEventListener('mouseover', e => {
+  cursor.classList.toggle('big', e.target.tagName === 'BUTTON');
+});
+
+document.getElementById('enter').addEventListener('click', () => {
+  document.getElementById('title').classList.add('gone');
+  document.body.classList.add('no-cursor');
+  slides[0].style.opacity = '1';
+  document.querySelectorAll('.pip')[0].className = 'pip on';
+  setTimeout(() => { hintEl.style.opacity = '0'; }, 5000);
+});
+
+document.getElementById('again').addEventListener('click', () => {
+  ended = false;
+  endEl.classList.remove('on');
+  scroller.scrollTop = 0;
+  slides.forEach((s, i) => { s.style.opacity = i === 0 ? '1' : '0'; });
+  hintEl.style.opacity = '1';
+  lastCaption = 0;
+  document.querySelectorAll('.pip').forEach((p, i) => {
+    p.className = 'pip' + (i === 0 ? ' on' : '');
+  });
+});
+</script>
+</body>
+</html>
